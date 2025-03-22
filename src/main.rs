@@ -7,11 +7,25 @@ use std::{
 };
 
 use rustyline::{error::ReadlineError, history::History};
+use serde_json::Value;
+
+#[derive(Default, Clone)]
+struct Config {
+    json: bool,
+}
 
 fn main() {
     let mut args = env::args().skip(1);
     let host = args.next();
     let port = args.next().and_then(|p| p.parse().ok());
+
+    let mut conf = Config::default();
+    for arg in args {
+        match arg.as_str() {
+            "--json" | "-j" => conf.json = true,
+            _ => {}
+        }
+    }
 
     let (Some(host), Some(port)) = (host, port) else {
         show_help();
@@ -29,14 +43,24 @@ fn main() {
     };
 
     let read_loop = thread::spawn(move || {
-        let mut src = BufReader::new(rd);
-        let mut buffer = String::new();
-        while let Ok(n) = src.read_line(&mut buffer) {
-            if n == 0 {
-                break;
+        if conf.json {
+            let src = serde_json::Deserializer::from_reader(rd);
+            for value in src.into_iter::<Value>() {
+                match value {
+                    Ok(v) => println!("{}", serde_json::to_string_pretty(&v).unwrap()),
+                    Err(e) => println!("{e}"),
+                }
             }
-            print!("{}", buffer);
-            buffer.clear();
+        } else {
+            let mut src = BufReader::new(rd);
+            let mut buffer = String::new();
+            while let Ok(n) = src.read_line(&mut buffer) {
+                if n == 0 {
+                    break;
+                }
+                print!("{}", buffer);
+                buffer.clear();
+            }
         }
     });
 
